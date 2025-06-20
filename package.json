@@ -1,0 +1,15 @@
+{
+  "name": "bot-bybit",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bybit-api": "^4.1.11"
+  }
+}
