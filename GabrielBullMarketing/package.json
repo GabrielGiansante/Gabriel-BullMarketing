@@ -9,8 +9,6 @@
     },
     "dependencies": {
       "@bybit-api/sdk": "^2.0.35"
-
     }
   }
-  
   
