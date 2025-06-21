@@ -9,7 +9,7 @@ const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
 const INITIAL_CAPITAL_USDT = 5000;
 
-const client = new RestClientV5({
+const client = new RestClient({
   key: API_KEY,
   secret: API_SECRET,
   testnet: false, // true para testnet
