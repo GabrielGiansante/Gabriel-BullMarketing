@@ -1,5 +1,5 @@
-import pkg from 'bybit-api';
-const { RestClient } = pkg;
+import { RestClientV5 } from 'bybit-api';
+
 
 // suas variáveis de ambiente
 const API_KEY = process.env.API_KEY;
@@ -9,7 +9,7 @@ const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
 const INITIAL_CAPITAL_USDT = 5000;
 
-const client = new RestClient({
+const client = new RestClientV5({
   key: API_KEY,
   secret: API_SECRET,
   testnet: false,
