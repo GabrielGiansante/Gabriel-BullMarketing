@@ -1,111 +1,108 @@
-import pkg from 'bybit-api';
-const { WebsocketClient, RestClient } = pkg;
+import { RestClientV5 } from '@bybit-api/sdk';
 
+const API_KEY = process.env.API_KEY;
+const API_SECRET = process.env.API_SECRET;
 
-// --- Configurações ---
-const API_KEY = 'SUA_API_KEY_AQUI';
-const API_SECRET = 'SEU_API_SECRET_AQUI';
 const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
 const INITIAL_CAPITAL_USDT = 5000;
 
-const client = new RestClient({
+const client = new RestClientV5({
   key: API_KEY,
   secret: API_SECRET,
-  testnet: false, // set true para testnet
+  testnet: false, // true para testnet
 });
 
-// Estado do bot
+// Estado
 let athPrice = 0;
-let positionSize = 0; // em contratos
+let positionSize = 0;
 let entered = false;
 let capitalUsed = 0;
 
-// Função para obter preço atual do símbolo
+// Obter preço atual
 async function getCurrentPrice() {
-  const ticker = await client.getTicker({ symbol: SYMBOL });
-  return parseFloat(ticker.lastPrice);
+  const res = await client.getTickers({ category: 'linear', symbol: SYMBOL });
+  const price = parseFloat(res.result.list[0].lastPrice);
+  return price;
 }
 
-// Ajusta alavancagem isolada
+// Definir alavancagem
 async function setLeverage() {
   await client.setLeverage({
+    category: 'linear',
     symbol: SYMBOL,
-    buy_leverage: LEVERAGE,
-    sell_leverage: LEVERAGE,
-    margin_type: 'Isolated',
+    buyLeverage: String(LEVERAGE),
+    sellLeverage: String(LEVERAGE),
   });
+  console.log(`Alavancagem definida em ${LEVERAGE}x`);
 }
 
-// Abre posição long
+// Abrir posição
 async function openPosition(amountUSDT) {
   const price = await getCurrentPrice();
-  const qty = amountUSDT / price * LEVERAGE;
+  const qty = (amountUSDT / price) * LEVERAGE;
 
-  // ordem de mercado compra
-  const res = await client.placeActiveOrder({
+  const res = await client.submitOrder({
+    category: 'linear',
     symbol: SYMBOL,
     side: 'Buy',
-    order_type: 'Market',
+    orderType: 'Market',
     qty: qty.toFixed(3),
-    time_in_force: 'GoodTillCancel',
-    reduce_only: false,
+    timeInForce: 'GTC',
   });
-  return res;
+
+  console.log('Ordem de compra executada', res);
+  return qty;
 }
 
-// Fecha posição
+// Fechar posição
 async function closePosition() {
-  // ordem de mercado venda para fechar
-  const res = await client.placeActiveOrder({
+  const res = await client.submitOrder({
+    category: 'linear',
     symbol: SYMBOL,
     side: 'Sell',
-    order_type: 'Market',
+    orderType: 'Market',
     qty: positionSize.toFixed(3),
-    time_in_force: 'GoodTillCancel',
-    reduce_only: true,
+    timeInForce: 'GTC',
+    reduceOnly: true,
   });
-  return res;
+
+  console.log('Posição fechada', res);
 }
 
-// Monitorar preço e lógica do bot
+// Monitoramento
 async function monitor() {
   const price = await getCurrentPrice();
+  console.log(`Preço atual: ${price}`);
 
   if (!entered) {
     if (price > athPrice) {
       athPrice = price;
       console.log(`Novo ATH: ${athPrice}`);
     } else if (athPrice > 0 && price <= athPrice * 0.9) {
-      // cair 10% do ATH, abrir posição com 80% do capital
       const amountToUse = INITIAL_CAPITAL_USDT * 0.8;
-      console.log(`Preço caiu 10% do ATH (${athPrice}), abrindo posição com $${amountToUse}`);
       await setLeverage();
-      await openPosition(amountToUse);
+      const qty = await openPosition(amountToUse);
       capitalUsed = amountToUse;
-      positionSize = amountToUse / price * LEVERAGE;
+      positionSize = qty;
       entered = true;
     }
   } else {
-    // Já entrou, checar se caiu 20% do ATH para DCA
     if (price <= athPrice * 0.8 && capitalUsed < INITIAL_CAPITAL_USDT) {
       const amountToUse = INITIAL_CAPITAL_USDT * 0.2;
-      console.log(`Preço caiu 20% do ATH (${athPrice}), DCA com $${amountToUse}`);
-      await openPosition(amountToUse);
+      const qty = await openPosition(amountToUse);
       capitalUsed += amountToUse;
-      positionSize += amountToUse / price * LEVERAGE;
+      positionSize += qty;
     }
-    // Checar se caiu 10% do ATH após entrada para fechar
+
     if (price <= athPrice * 0.9) {
-      console.log(`Preço caiu 10% do ATH após entrada, fechando posição`);
       await closePosition();
-      // Resetar estado
       athPrice = price;
       positionSize = 0;
       entered = false;
       capitalUsed = 0;
     }
-    // Se preço subir, atualizar ATH
+
     if (price > athPrice) {
       athPrice = price;
       console.log(`Atualizando ATH para ${athPrice}`);
@@ -113,7 +110,7 @@ async function monitor() {
   }
 }
 
-// Loop para rodar o monitor a cada 15 segundos
+// Loop a cada 15 segundos
 setInterval(() => {
   monitor().catch(console.error);
 }, 15000);
