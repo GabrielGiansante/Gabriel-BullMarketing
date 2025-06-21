@@ -1,6 +1,7 @@
 {
     "name": "gabriel-bullmarketing",
     "version": "1.0.0",
+    "type": "module",
     "description": "Bot Gabriel BullMarketing na Bybit",
     "main": "bot.js",
     "scripts": {
@@ -10,4 +11,5 @@
       "bybit-api": "^3.2.0"
     }
   }
+  
   

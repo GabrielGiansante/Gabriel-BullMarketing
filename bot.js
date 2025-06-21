@@ -1,4 +1,6 @@
-import { WebsocketClient, RestClient } from 'bybit-api';
+import pkg from 'bybit-api';
+const { WebsocketClient, RestClient } = pkg;
+
 
 // --- Configurações ---
 const API_KEY = 'SUA_API_KEY_AQUI';
