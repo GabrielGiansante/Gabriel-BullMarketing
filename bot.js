@@ -1,4 +1,6 @@
-import { RestClientV5 } from '@bybit-api/sdk';
+import pkg from 'bybit-api';
+const { WebsocketClient, RestClient } = pkg;
+
 
 const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
