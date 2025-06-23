@@ -5,7 +5,7 @@ const API_SECRET = process.env.API_SECRET;
 
 const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
-const INITIAL_CAPITAL_USDT = 5000;
+let capitalTotal = 5000; // Inicial, será atualizado com lucro
 
 const client = new RestClient({
   key: API_KEY,
@@ -16,7 +16,10 @@ const client = new RestClient({
 let athPrice = 0;
 let positionSize = 0;
 let entered = false;
-let capitalUsed = 0;
+let capitalUsado = 0;
+let dcaUsado = false;
+let entryPrice = 0;
+let gatilhoATH = 0;
 
 async function getCurrentPrice() {
   const ticker = await client.getTicker({ symbol: SYMBOL });
@@ -34,7 +37,7 @@ async function setLeverage() {
 
 async function openPosition(amountUSDT) {
   const price = await getCurrentPrice();
-  const qty = amountUSDT / price * LEVERAGE;
+  const qty = (amountUSDT / price) * LEVERAGE;
 
   const res = await client.placeActiveOrder({
     symbol: SYMBOL,
@@ -44,10 +47,13 @@ async function openPosition(amountUSDT) {
     time_in_force: 'GoodTillCancel',
     reduce_only: false,
   });
-  return res;
+
+  console.log(`>> ABRIU POSIÇÃO COM: $${amountUSDT.toFixed(2)} | PREÇO: ${price} | QTY: ${qty.toFixed(3)}`);
+  return { qty, price };
 }
 
 async function closePosition() {
+  const price = await getCurrentPrice();
   const res = await client.placeActiveOrder({
     symbol: SYMBOL,
     side: 'Sell',
@@ -56,7 +62,19 @@ async function closePosition() {
     time_in_force: 'GoodTillCancel',
     reduce_only: true,
   });
-  return res;
+
+  const valorFinal = (positionSize / LEVERAGE) * price;
+  const lucro = valorFinal - capitalUsado;
+  capitalTotal += lucro;
+  console.log(`>> FECHOU POSIÇÃO | PREÇO: ${price} | LUCRO: $${lucro.toFixed(2)} | NOVO CAPITAL: $${capitalTotal.toFixed(2)}`);
+
+  // Reset
+  entered = false;
+  capitalUsado = 0;
+  dcaUsado = false;
+  positionSize = 0;
+  entryPrice = 0;
+  gatilhoATH = 0;
 }
 
 async function monitor() {
@@ -65,35 +83,60 @@ async function monitor() {
   if (!entered) {
     if (price > athPrice) {
       athPrice = price;
-      console.log(`Novo ATH: ${athPrice}`);
+      console.log(`ATH ATUALIZADO PARA ${athPrice}`);
     } else if (athPrice > 0 && price <= athPrice * 0.9) {
-      const amountToUse = INITIAL_CAPITAL_USDT * 0.8;
-      console.log(`Caiu 10% do ATH (${athPrice}), abrindo posição com $${amountToUse}`);
+      const valorEntrada = capitalTotal * 0.8;
       await setLeverage();
-      await openPosition(amountToUse);
-      capitalUsed = amountToUse;
-      positionSize = amountToUse / price * LEVERAGE;
+      const { qty, price: precoEntrada } = await openPosition(valorEntrada);
+
       entered = true;
+      capitalUsado = valorEntrada;
+      positionSize = qty;
+      entryPrice = precoEntrada;
+      gatilhoATH = athPrice;
+
+      console.log(`>> ENTRADA COM 80% EM ${precoEntrada} (ATH: ${gatilhoATH})`);
     }
   } else {
-    if (price <= athPrice * 0.8 && capitalUsed < INITIAL_CAPITAL_USDT) {
-      const amountToUse = INITIAL_CAPITAL_USDT * 0.2;
-      console.log(`Caiu 20% do ATH (${athPrice}), DCA com $${amountToUse}`);
-      await openPosition(amountToUse);
-      capitalUsed += amountToUse;
-      positionSize += amountToUse / price * LEVERAGE;
-    }
-    if (price <= athPrice * 0.9) {
-      console.log(`Caiu 10% do ATH após entrada, fechando posição`);
+    const lucro = price > entryPrice;
+
+    // Condição de FECHAMENTO: caiu 10% do ATH DA POSIÇÃO e estamos no lucro
+    if (lucro && price <= gatilhoATH * 0.9) {
+      console.log(`>> PREÇO CAIU 10% DO ATH (${gatilhoATH}) COM LUCRO. FECHANDO E REENTRANDO.`);
       await closePosition();
-      athPrice = price;
-      positionSize = 0;
-      entered = false;
-      capitalUsed = 0;
+
+      // Nova entrada com 80% + lucro (capitalTotal já está atualizado)
+      const valorNovaEntrada = capitalTotal * 0.8;
+      await setLeverage();
+      const { qty, price: precoReentrada } = await openPosition(valorNovaEntrada);
+
+      entered = true;
+      capitalUsado = valorNovaEntrada;
+      positionSize = qty;
+      entryPrice = precoReentrada;
+      gatilhoATH = price > athPrice ? price : athPrice;
+      athPrice = gatilhoATH;
+      dcaUsado = false;
+
+      console.log(`>> REENTROU COM 80% EM ${precoReentrada} (NOVO ATH: ${gatilhoATH})`);
     }
+
+    // Condição de DCA: caiu 20% do ATH de gatilho
+    if (!dcaUsado && price <= gatilhoATH * 0.8) {
+      const valorDCA = capitalTotal * 0.2;
+      const { qty } = await openPosition(valorDCA);
+
+      capitalUsado += valorDCA;
+      positionSize += qty;
+      dcaUsado = true;
+
+      console.log(`>> DCA ATIVADO COM 20% EM ${price}`);
+    }
+
+    // Atualiza ATH se subir
     if (price > athPrice) {
       athPrice = price;
-      console.log(`Atualizando ATH para ${athPrice}`);
+      console.log(`ATH ATUALIZADO PARA ${athPrice}`);
     }
   }
 }

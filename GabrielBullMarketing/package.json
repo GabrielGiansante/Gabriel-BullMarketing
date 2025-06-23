@@ -1,8 +1,7 @@
 {
-    "name": "gabriel-bullmarketing",
+    "name": "bot-bybit",
     "version": "1.0.0",
     "type": "module",
-    "description": "Bot Gabriel BullMarketing na Bybit",
     "main": "bot.js",
     "scripts": {
       "start": "node bot.js"
