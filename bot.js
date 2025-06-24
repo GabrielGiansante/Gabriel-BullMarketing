@@ -1,15 +1,11 @@
-// CÓDIGO DE DIAGNÓSTICO
-const bybitApi = require('bybit-api');
-console.log('CONTEÚDO DO PACOTE:', bybitApi);
-const RestClient = bybitApi.RestClient;
-const API_KEY = process.env.API_KEY;
-const API_SECRET = process.env.API_SECRET;
+// A LINHA FINAL, CORRETA E BASEADA EM EVIDÊNCIAS
+const { RestClientV5 } = require('bybit-api');
 
 const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
 let capitalTotal = 5000; // Inicial, será atualizado com lucro
 
-const client = new RestClient({
+const client = new RestClientV5({
   key: API_KEY,
   secret: API_SECRET,
   testnet: false,
