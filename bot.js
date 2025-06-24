@@ -1,6 +1,7 @@
-// ESTA É A LINHA CORRETA PARA O MODO CommonJS
-const { RestClient } = require('bybit-api');
-
+// CÓDIGO DE DIAGNÓSTICO
+const bybitApi = require('bybit-api');
+console.log('CONTEÚDO DO PACOTE:', bybitApi);
+const RestClient = bybitApi.RestClient;
 const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
 
