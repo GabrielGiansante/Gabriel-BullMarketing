@@ -1,5 +1,5 @@
-// ESTA É A LINHA CORRETA E FINAL
-import RestClient from 'bybit-api';
+// ESTA É A LINHA CORRETA PARA O MODO CommonJS
+const { RestClient } = require('bybit-api');
 
 const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
