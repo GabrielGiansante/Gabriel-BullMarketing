@@ -22,11 +22,18 @@ let dcaUsado = false;
 let entryPrice = 0;
 let gatilhoATH = 0;
 
+// A FUNÇÃO CORRETA PARA A API V5
 async function getCurrentPrice() {
-  const ticker = await client.getTicker({ symbol: SYMBOL });
-  return parseFloat(ticker.lastPrice);
-}
+  // MUDANÇA 1: A função agora se chama getTickers (plural)
+  // MUDANÇA 2: Precisamos especificar a 'category' como 'linear' para futuros
+  const response = await client.getTickers({
+    category: 'linear',
+    symbol: SYMBOL,
+  });
 
+  // MUDANÇA 3: O preço agora vem dentro de um caminho mais longo
+  return parseFloat(response.result.list[0].lastPrice);
+}
 async function setLeverage() {
   await client.setLeverage({
     symbol: SYMBOL,
