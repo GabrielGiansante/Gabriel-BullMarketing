@@ -1,6 +1,9 @@
 // A LINHA FINAL, CORRETA E BASEADA EM EVIDÊNCIAS
 const { RestClientV5 } = require('bybit-api');
 
+const API_KEY = process.env.API_KEY;
+const API_SECRET = process.env.API_SECRET;
+
 const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
 let capitalTotal = 5000; // Inicial, será atualizado com lucro
