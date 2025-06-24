@@ -86,7 +86,7 @@ async function monitor() {
   // SE NÃO ESTAMOS GERENCIANDO UMA POSIÇÃO...
   if (!entered) {
     console.log(`Preço atual: ${price}. Procurando por posição manual aberta...`);
-    const positions = await client.getPositions({ category: 'linear', symbol: SYMBOL });
+    const positions = await client.getPositionInfo({ category: 'linear', symbol: SYMBOL });
     
     if (positions.result.list.length > 0 && parseFloat(positions.result.list[0].size) > 0) {
       const myPosition = positions.result.list[0];
