@@ -1,4 +1,6 @@
-import { RestClient } from 'bybit-api';
+// ESTA É A FORMA CORRETA
+import Bybit from 'bybit-api';
+const { RestClient } = Bybit;
 
 const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
