@@ -83,7 +83,7 @@ async function closePosition() {
   }
 }
 
-// LÓGICA PRINCIPAL DO MONITOR (COM O BLOCO DE REENTRADA CORRIGIDO)
+// FUNÇÃO MONITOR() CORRIGIDA PARA O TESTE RÁPIDO
 async function monitor() {
   console.log("-----------------------------------------");
   const price = await getCurrentPrice();
@@ -113,11 +113,9 @@ async function monitor() {
       console.log(`*** NOVO GATILHO ATH ATUALIZADO PARA ${gatilhoATH} ***`);
     }
 
-    const lucro = price > entryPrice;
-
-    // BLOCO DE FECHAMENTO E REENTRADA CORRIGIDO
-    if (lucro && price <= gatilhoATH * 0.9) { // GATILHO ORIGINAL DE 10%
-      console.log(`>> CONDIÇÃO DE SAÍDA ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
+    // CONDIÇÃO DE FECHAMENTO PARA TESTE (0.1%)
+    if (price <= gatilhoATH * 0.999) {
+      console.log(`>> CONDIÇÃO DE SAÍDA DE TESTE ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
       await closePosition();
       console.log("AGUARDANDO 15 SEGUNDOS PARA ATUALIZAÇÃO DE SALDO...");
       await new Promise(resolve => setTimeout(resolve, 15000));
@@ -135,27 +133,21 @@ async function monitor() {
           dcaUsado = false;
       } else {
           console.error("FALHA NA REENTRADA. VOLTANDO AO MODO DE DETECÇÃO MANUAL.");
-          entered = false;
-          positionSize = 0;
-          entryPrice = 0;
-          capitalUsado = 0;
-          gatilhoATH = 0;
-          dcaUsado = false;
+          entered = false; positionSize = 0; entryPrice = 0; capitalUsado = 0; gatilhoATH = 0; dcaUsado = false;
       }
       return;
     }
 
-    // LÓGICA DE DCA ORIGINAL (com cálculo de preço médio corrigido)
-    if (!dcaUsado && price <= gatilhoATH * 0.8) { // GATILHO ORIGINAL DE 20%
-        console.log(">> CONDIÇÃO DE DCA ATINGIDA! EXECUTANDO...");
-        const valorDCA = capitalUsado / 4; // Usa 25% do capital já em risco (80% / 4 = 20%)
+    // CONDIÇÃO DE DCA PARA TESTE (0.2%)
+    if (!dcaUsado && price <= gatilhoATH * 0.998) {
+        console.log(">> CONDIÇÃO DE DCA DE TESTE ATINGIDA! EXECUTANDO...");
+        const valorDCA = capitalUsado / 4;
         const dcaResult = await openPosition(valorDCA);
         if (dcaResult) {
             const capitalAntigo = capitalUsado;
             const tamanhoAntigo = positionSize;
             capitalUsado += valorDCA;
             positionSize += dcaResult.qty;
-            // Cálculo correto do preço médio ponderado
             entryPrice = ((tamanhoAntigo * entryPrice) + (dcaResult.qty * dcaResult.price)) / positionSize;
             dcaUsado = true;
             console.log(`>> DCA EXECUTADO. Novo Preço Médio: ${entryPrice.toFixed(2)}, Novo Tamanho: ${positionSize.toFixed(3)}`);
@@ -163,7 +155,6 @@ async function monitor() {
     }
   }
 }
-
 console.log("==> BOT GERENCIADOR BYBIT INICIADO <==");
 console.log("Aguardando você abrir uma posição manualmente na Bybit...");
 setInterval(() => {
