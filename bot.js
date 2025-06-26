@@ -39,7 +39,8 @@ async function getCurrentPrice() {
 // ===========================================================
 async function getAvailableBalance() {
   try {
-    const response = await client.getWalletBalance({ accountType: 'CONTRACT' });
+    // A LINHA FINAL E CORRETA
+      const response = await client.getWalletBalance({ accountType: 'UNIFIED' });
     
     // Verificação de segurança
     if (response.retCode === 0 && response.result.list && response.result.list.length > 0) {
