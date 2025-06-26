@@ -1,5 +1,5 @@
 // =================================================================
-// BOT.JS - VERSÃO FINAL COM CORREÇÃO DE PRECISÃO DA ORDEM
+// BOT.JS - VERSÃO FINAL COM AJUSTE DE QUANTIDADE PARA MÚLTIPLOS
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -16,25 +16,16 @@ const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
 const MIN_ORDER_QTY_BTC = 0.001; // Mínimo de compra para BTCUSDT na Bybit
 
-// Nossas variáveis de estado
-let entered = false;
-let positionSize = 0;
-let entryPrice = 0;
-let capitalUsado = 0;
-let gatilhoATH = 0;
-let dcaUsado = false;
+// ... (variáveis de estado permanecem as mesmas) ...
+let entered = false, positionSize = 0, entryPrice = 0, capitalUsado = 0, gatilhoATH = 0, dcaUsado = false;
 
-// FUNÇÕES DE AÇÃO
+// ... (funções getCurrentPrice, getAvailableBalance, setLeverage permanecem as mesmas) ...
 async function getCurrentPrice() {
   try {
     const response = await client.getTickers({ category: 'linear', symbol: SYMBOL });
     return parseFloat(response.result.list[0].lastPrice);
-  } catch (error) {
-    console.error("Erro ao buscar preço:", error.message);
-    return null;
-  }
+  } catch (error) { console.error("Erro ao buscar preço:", error.message); return null; }
 }
-
 async function getAvailableBalance() {
   try {
     const response = await client.getWalletBalance({ accountType: 'UNIFIED' });
@@ -49,12 +40,8 @@ async function getAvailableBalance() {
     }
     console.error("Não foi possível encontrar o 'equity' de USDT na resposta da API:", JSON.stringify(response));
     return 0;
-  } catch (error) {
-    console.error("Erro crítico ao buscar saldo da carteira:", error.message);
-    return 0;
-  }
+  } catch (error) { console.error("Erro crítico ao buscar saldo da carteira:", error.message); return 0; }
 }
-
 async function setLeverage() {
   try {
     console.log(`>> GARANTINDO ALAVANCAGEM DE ${LEVERAGE}x...`);
@@ -64,30 +51,34 @@ async function setLeverage() {
 }
 
 // ===========================================================
-// FUNÇÃO openPosition CORRIGIDA COM PRECISÃO E VALIDAÇÃO
+// FUNÇÃO openPosition COM CÁLCULO DE QUANTIDADE CORRIGIDO
 // ===========================================================
 async function openPosition(amountUSDT) {
   const price = await getCurrentPrice();
   if (!price) return null;
 
-  // MUDANÇA 1: Aumenta a precisão para 5 casas decimais
-  let qty = (amountUSDT / price).toFixed(5);
-  console.log(`>> Cálculo inicial - Tentando abrir posição: $${amountUSDT.toFixed(2)} | Qty: ${qty}`);
+  // Calcula a quantidade teórica
+  const theoreticalQty = amountUSDT / price;
 
-  // MUDANÇA 2: Verifica se a quantidade é maior que o mínimo permitido
-  if (parseFloat(qty) < MIN_ORDER_QTY_BTC) {
-    console.error(`!! ORDEM CANCELADA: Quantidade calculada (${qty}) é menor que o mínimo de ${MIN_ORDER_QTY_BTC} BTC.`);
-    return null; // Cancela a abertura da posição
+  // Arredonda a quantidade PARA BAIXO para o múltiplo mais próximo do mínimo
+  // Ex: 0.0019 se torna 0.001. 0.0021 se torna 0.002.
+  const adjustedQty = Math.floor(theoreticalQty / MIN_ORDER_QTY_BTC) * MIN_ORDER_QTY_BTC;
+  
+  // Converte para string com a precisão correta
+  const finalQty = adjustedQty.toFixed(3);
+
+  console.log(`>> Cálculo de Posição: $${amountUSDT.toFixed(2)} | Qty Teórica: ${theoreticalQty.toFixed(5)} | Qty Ajustada: ${finalQty}`);
+
+  if (parseFloat(finalQty) < MIN_ORDER_QTY_BTC) {
+    console.error(`!! ORDEM CANCELADA: Quantidade ajustada (${finalQty}) é menor que o mínimo de ${MIN_ORDER_QTY_BTC} BTC.`);
+    return null;
   }
-
-  // A Bybit espera uma string para a quantidade
-  qty = String(qty);
-
+  
   try {
-    const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Buy', orderType: 'Market', qty: qty });
+    const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Buy', orderType: 'Market', qty: finalQty });
     if (res.retCode === 0) {
       console.log(">> SUCESSO! Ordem de abertura enviada.");
-      return { qty: parseFloat(qty), price };
+      return { qty: parseFloat(finalQty), price };
     } else {
       console.error("ERRO DE NEGÓCIO DA BYBIT (ABERTURA):", JSON.stringify(res));
       return null;
@@ -99,12 +90,13 @@ async function openPosition(amountUSDT) {
 }
 
 async function closePosition() {
-  // ... (código de closePosition permanece o mesmo)
   const price = await getCurrentPrice();
   if (!price) return;
   try {
-    console.log(`>> FECHANDO POSIÇÃO DE ${positionSize.toFixed(3)} BTC...`);
-    const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Sell', orderType: 'Market', qty: String(positionSize.toFixed(5)), reduceOnly: true });
+    // Para fechar, a quantidade pode ser mais precisa
+    const qtyToClose = positionSize.toFixed(5);
+    console.log(`>> FECHANDO POSIÇÃO DE ${qtyToClose} BTC...`);
+    const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Sell', orderType: 'Market', qty: qtyToClose, reduceOnly: true });
     if (res.retCode === 0) {
         const valorFinal = positionSize * price;
         const lucro = valorFinal - capitalUsado;
@@ -117,16 +109,11 @@ async function closePosition() {
   }
 }
 
-// LÓGICA PRINCIPAL DO MONITOR
+// ... (A função monitor() permanece exatamente a mesma) ...
 async function monitor() {
-  // ... (código do monitor permanece o mesmo)
   console.log("-----------------------------------------");
   const price = await getCurrentPrice();
-  if (price === null) {
-      console.log("Não foi possível obter o preço. Aguardando próximo ciclo.");
-      return;
-  }
-
+  if (price === null) { console.log("Não foi possível obter o preço. Aguardando próximo ciclo."); return; }
   if (!entered) {
     console.log(`Preço atual: ${price}. Procurando por posição manual aberta...`);
     const positions = await client.getPositionInfo({ category: 'linear', symbol: SYMBOL });
@@ -147,26 +134,21 @@ async function monitor() {
       gatilhoATH = price;
       console.log(`*** NOVO GATILHO ATH ATUALIZADO PARA ${gatilhoATH} ***`);
     }
-
-    if (price <= gatilhoATH * 0.999) {
+    if (price <= gatilhoATH * 0.999) { // GATILHO DE TESTE
       console.log(`>> CONDIÇÃO DE SAÍDA ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
       await closePosition();
       console.log("AGUARDANDO 15 SEGUNDOS PARA ATUALIZAÇÃO DE SALDO...");
       await new Promise(resolve => setTimeout(resolve, 15000));
-      
       const saldoDisponivel = await getAvailableBalance();
       const valorNovaEntrada = saldoDisponivel * 0.8;
-      
       const ORDEM_MINIMA_USDT = 5;
       if (valorNovaEntrada < ORDEM_MINIMA_USDT) {
         console.error(`!! REENTRADA CANCELADA: Valor calculado ($${valorNovaEntrada.toFixed(2)}) é menor que o mínimo de $${ORDEM_MINIMA_USDT}.`);
         entered = false; positionSize = 0; entryPrice = 0; capitalUsado = 0; gatilhoATH = 0; dcaUsado = false;
         return;
       }
-      
       await setLeverage();
       const reentradaResult = await openPosition(valorNovaEntrada);
-
       if (reentradaResult) {
           console.log(">> REENTRADA EXECUTADA COM SUCESSO. ATUALIZANDO ESTADO...");
           entryPrice = reentradaResult.price;
@@ -180,8 +162,7 @@ async function monitor() {
       }
       return;
     }
-
-    if (!dcaUsado && price <= gatilhoATH * 0.998) {
+    if (!dcaUsado && price <= gatilhoATH * 0.998) { // GATILHO DE TESTE DCA
         console.log(">> CONDIÇÃO DE DCA DE TESTE ATINGIDA! EXECUTANDO...");
         const valorDCA = capitalUsado / 4;
         const dcaResult = await openPosition(valorDCA);
@@ -200,6 +181,4 @@ async function monitor() {
 
 console.log("==> BOT GERENCIADOR BYBIT INICIADO <==");
 console.log("Aguardando você abrir uma posição manualmente na Bybit...");
-setInterval(() => {
-    monitor().catch(err => console.error("ERRO NO CICLO MONITOR:", err));
-}, 15000);
+setInterval(() => { monitor().catch(err => console.error("ERRO NO CICLO MONITOR:", err)); }, 15000);
