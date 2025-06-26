@@ -1,5 +1,5 @@
 // =================================================================
-// BOT.JS - VERSÃO FINALÍSSIMA COM CORREÇÃO DE SALDO
+// BOT.JS - VERSÃO FINAL COM LEITURA DE SALDO 'EQUITY' PARA UTA
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -35,27 +35,25 @@ async function getCurrentPrice() {
 }
 
 // ===========================================================
-// FUNÇÃO getAvailableBalance CORRIGIDA
+// FUNÇÃO getAvailableBalance CORRIGIDA PARA LER 'equity'
 // ===========================================================
 async function getAvailableBalance() {
   try {
-    // A LINHA FINAL E CORRETA
-      const response = await client.getWalletBalance({ accountType: 'UNIFIED' });
+    const response = await client.getWalletBalance({ accountType: 'UNIFIED' });
     
-    // Verificação de segurança
     if (response.retCode === 0 && response.result.list && response.result.list.length > 0) {
-      // A resposta é uma lista, vamos procurar a conta de contrato
-      const contractAccount = response.result.list[0];
-      const usdtBalance = contractAccount.coin.find(c => c.coin === 'USDT');
+      const unifiedAccount = response.result.list[0];
+      const usdtBalance = unifiedAccount.coin.find(c => c.coin === 'USDT');
       
-      if (usdtBalance && usdtBalance.availableToWithdraw) {
-        const balance = parseFloat(usdtBalance.availableToWithdraw);
-        console.log(`>> SALDO DISPONÍVEL DETECTADO: $${balance.toFixed(2)}`);
+      // MUDANÇA CRÍTICA: Lendo 'equity' em vez de 'availableToWithdraw'
+      if (usdtBalance && usdtBalance.equity) {
+        const balance = parseFloat(usdtBalance.equity);
+        console.log(`>> SALDO DISPONÍVEL (Equity) DETECTADO: $${balance.toFixed(2)}`);
         return balance;
       }
     }
     
-    console.error("Não foi possível encontrar o saldo de USDT na resposta da API:", JSON.stringify(response));
+    console.error("Não foi possível encontrar o 'equity' de USDT na resposta da API:", JSON.stringify(response));
     return 0;
   } catch (error) {
     console.error("Erro crítico ao buscar saldo da carteira:", error.message);
@@ -102,7 +100,7 @@ async function closePosition() {
         const lucro = valorFinal - capitalUsado;
         console.log(`>> FECHOU POSIÇÃO | PREÇO: ${price} | LUCRO: $${lucro.toFixed(2)}`);
     } else {
-        console.error("ERRO DE NEGÓCIO DA BYBIT (FECHAMENTO):", JSON.stringify(res));
+        console.error("ERRO DE NEGÓCIO DA BYBIT (FECHamento):", JSON.stringify(res));
     }
   } catch (error) {
     console.error("ERRO CRÍTICO NA CHAMADA DE FECHAMENTO:", error.message);
