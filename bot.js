@@ -1,5 +1,5 @@
 // =================================================================
-// BOT.JS - VERSÃO FINAL COM LEITURA DE SALDO 'EQUITY' PARA UTA
+// BOT.JS - VERSÃO FINAL COM CORREÇÃO DE PRECISÃO DA ORDEM
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -14,6 +14,7 @@ const client = new RestClientV5({
 
 const SYMBOL = 'BTCUSDT';
 const LEVERAGE = 2;
+const MIN_ORDER_QTY_BTC = 0.001; // Mínimo de compra para BTCUSDT na Bybit
 
 // Nossas variáveis de estado
 let entered = false;
@@ -34,25 +35,18 @@ async function getCurrentPrice() {
   }
 }
 
-// ===========================================================
-// FUNÇÃO getAvailableBalance CORRIGIDA PARA LER 'equity'
-// ===========================================================
 async function getAvailableBalance() {
   try {
     const response = await client.getWalletBalance({ accountType: 'UNIFIED' });
-    
     if (response.retCode === 0 && response.result.list && response.result.list.length > 0) {
       const unifiedAccount = response.result.list[0];
       const usdtBalance = unifiedAccount.coin.find(c => c.coin === 'USDT');
-      
-      // MUDANÇA CRÍTICA: Lendo 'equity' em vez de 'availableToWithdraw'
       if (usdtBalance && usdtBalance.equity) {
         const balance = parseFloat(usdtBalance.equity);
         console.log(`>> SALDO DISPONÍVEL (Equity) DETECTADO: $${balance.toFixed(2)}`);
         return balance;
       }
     }
-    
     console.error("Não foi possível encontrar o 'equity' de USDT na resposta da API:", JSON.stringify(response));
     return 0;
   } catch (error) {
@@ -69,11 +63,26 @@ async function setLeverage() {
   } catch(e) { console.log('Alavancagem ou modo de margem já definidos.'); }
 }
 
+// ===========================================================
+// FUNÇÃO openPosition CORRIGIDA COM PRECISÃO E VALIDAÇÃO
+// ===========================================================
 async function openPosition(amountUSDT) {
   const price = await getCurrentPrice();
   if (!price) return null;
-  const qty = (amountUSDT / price).toFixed(3);
-  console.log(`>> TENTANDO ABRIR POSIÇÃO: $${amountUSDT.toFixed(2)} | QTY: ${qty}`);
+
+  // MUDANÇA 1: Aumenta a precisão para 5 casas decimais
+  let qty = (amountUSDT / price).toFixed(5);
+  console.log(`>> Cálculo inicial - Tentando abrir posição: $${amountUSDT.toFixed(2)} | Qty: ${qty}`);
+
+  // MUDANÇA 2: Verifica se a quantidade é maior que o mínimo permitido
+  if (parseFloat(qty) < MIN_ORDER_QTY_BTC) {
+    console.error(`!! ORDEM CANCELADA: Quantidade calculada (${qty}) é menor que o mínimo de ${MIN_ORDER_QTY_BTC} BTC.`);
+    return null; // Cancela a abertura da posição
+  }
+
+  // A Bybit espera uma string para a quantidade
+  qty = String(qty);
+
   try {
     const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Buy', orderType: 'Market', qty: qty });
     if (res.retCode === 0) {
@@ -90,17 +99,18 @@ async function openPosition(amountUSDT) {
 }
 
 async function closePosition() {
+  // ... (código de closePosition permanece o mesmo)
   const price = await getCurrentPrice();
   if (!price) return;
   try {
     console.log(`>> FECHANDO POSIÇÃO DE ${positionSize.toFixed(3)} BTC...`);
-    const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Sell', orderType: 'Market', qty: String(positionSize.toFixed(3)), reduceOnly: true });
+    const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Sell', orderType: 'Market', qty: String(positionSize.toFixed(5)), reduceOnly: true });
     if (res.retCode === 0) {
         const valorFinal = positionSize * price;
         const lucro = valorFinal - capitalUsado;
         console.log(`>> FECHOU POSIÇÃO | PREÇO: ${price} | LUCRO: $${lucro.toFixed(2)}`);
     } else {
-        console.error("ERRO DE NEGÓCIO DA BYBIT (FECHamento):", JSON.stringify(res));
+        console.error("ERRO DE NEGÓCIO DA BYBIT (FECHAMENTO):", JSON.stringify(res));
     }
   } catch (error) {
     console.error("ERRO CRÍTICO NA CHAMADA DE FECHAMENTO:", error.message);
@@ -109,6 +119,7 @@ async function closePosition() {
 
 // LÓGICA PRINCIPAL DO MONITOR
 async function monitor() {
+  // ... (código do monitor permanece o mesmo)
   console.log("-----------------------------------------");
   const price = await getCurrentPrice();
   if (price === null) {
@@ -137,7 +148,7 @@ async function monitor() {
       console.log(`*** NOVO GATILHO ATH ATUALIZADO PARA ${gatilhoATH} ***`);
     }
 
-    if (price <= gatilhoATH * 0.999) { // GATILHO DE TESTE (0.1% de queda)
+    if (price <= gatilhoATH * 0.999) {
       console.log(`>> CONDIÇÃO DE SAÍDA ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
       await closePosition();
       console.log("AGUARDANDO 15 SEGUNDOS PARA ATUALIZAÇÃO DE SALDO...");
@@ -170,7 +181,7 @@ async function monitor() {
       return;
     }
 
-    if (!dcaUsado && price <= gatilhoATH * 0.998) { // GATILHO DE TESTE PARA DCA (0.2% de queda)
+    if (!dcaUsado && price <= gatilhoATH * 0.998) {
         console.log(">> CONDIÇÃO DE DCA DE TESTE ATINGIDA! EXECUTANDO...");
         const valorDCA = capitalUsado / 4;
         const dcaResult = await openPosition(valorDCA);
