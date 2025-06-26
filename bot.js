@@ -1,5 +1,5 @@
 // =================================================================
-// BOT.JS - VERSÃO FINAL COM SALDO DINÂMICO
+// BOT.JS - VERSÃO FINALÍSSIMA COM CORREÇÃO DE SALDO
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -29,25 +29,35 @@ async function getCurrentPrice() {
     const response = await client.getTickers({ category: 'linear', symbol: SYMBOL });
     return parseFloat(response.result.list[0].lastPrice);
   } catch (error) {
-    console.error("Erro ao buscar preço na Bybit:", error);
+    console.error("Erro ao buscar preço:", error.message);
     return null;
   }
 }
 
-// NOVA FUNÇÃO PARA BUSCAR O SALDO DISPONÍVEL
+// ===========================================================
+// FUNÇÃO getAvailableBalance CORRIGIDA
+// ===========================================================
 async function getAvailableBalance() {
   try {
     const response = await client.getWalletBalance({ accountType: 'CONTRACT' });
-    const usdtBalance = response.result.list[0].coin.find(c => c.coin === 'USDT');
-    if (usdtBalance) {
-      const balance = parseFloat(usdtBalance.availableToWithdraw);
-      console.log(`>> SALDO DISPONÍVEL DETECTADO: $${balance.toFixed(2)}`);
-      return balance;
+    
+    // Verificação de segurança
+    if (response.retCode === 0 && response.result.list && response.result.list.length > 0) {
+      // A resposta é uma lista, vamos procurar a conta de contrato
+      const contractAccount = response.result.list[0];
+      const usdtBalance = contractAccount.coin.find(c => c.coin === 'USDT');
+      
+      if (usdtBalance && usdtBalance.availableToWithdraw) {
+        const balance = parseFloat(usdtBalance.availableToWithdraw);
+        console.log(`>> SALDO DISPONÍVEL DETECTADO: $${balance.toFixed(2)}`);
+        return balance;
+      }
     }
-    console.error("Não foi possível encontrar o saldo de USDT na resposta da API.");
+    
+    console.error("Não foi possível encontrar o saldo de USDT na resposta da API:", JSON.stringify(response));
     return 0;
   } catch (error) {
-    console.error("Erro ao buscar saldo da carteira:", error);
+    console.error("Erro crítico ao buscar saldo da carteira:", error.message);
     return 0;
   }
 }
@@ -68,14 +78,14 @@ async function openPosition(amountUSDT) {
   try {
     const res = await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Buy', orderType: 'Market', qty: qty });
     if (res.retCode === 0) {
-      console.log(">> SUCESSO! RESPOSTA DA BYBIT (ABERTURA):", JSON.stringify(res.result));
+      console.log(">> SUCESSO! Ordem de abertura enviada.");
       return { qty: parseFloat(qty), price };
     } else {
       console.error("ERRO DE NEGÓCIO DA BYBIT (ABERTURA):", JSON.stringify(res));
       return null;
     }
   } catch (error) {
-    console.error("ERRO CRÍTICO NA CHAMADA DE ABERTURA:", error);
+    console.error("ERRO CRÍTICO NA CHAMADA DE ABERTURA:", error.message);
     return null;
   }
 }
@@ -94,7 +104,7 @@ async function closePosition() {
         console.error("ERRO DE NEGÓCIO DA BYBIT (FECHAMENTO):", JSON.stringify(res));
     }
   } catch (error) {
-    console.error("ERRO CRÍTICO NA CHAMADA DE FECHAMENTO:", error);
+    console.error("ERRO CRÍTICO NA CHAMADA DE FECHAMENTO:", error.message);
   }
 }
 
@@ -128,8 +138,7 @@ async function monitor() {
       console.log(`*** NOVO GATILHO ATH ATUALIZADO PARA ${gatilhoATH} ***`);
     }
 
-    // GATILHO DE TESTE (0.1% de queda)
-    if (price <= gatilhoATH * 0.999) {
+    if (price <= gatilhoATH * 0.999) { // GATILHO DE TESTE (0.1% de queda)
       console.log(`>> CONDIÇÃO DE SAÍDA ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
       await closePosition();
       console.log("AGUARDANDO 15 SEGUNDOS PARA ATUALIZAÇÃO DE SALDO...");
@@ -162,8 +171,7 @@ async function monitor() {
       return;
     }
 
-    // GATILHO DE TESTE PARA DCA (0.2% de queda)
-    if (!dcaUsado && price <= gatilhoATH * 0.998) {
+    if (!dcaUsado && price <= gatilhoATH * 0.998) { // GATILHO DE TESTE PARA DCA (0.2% de queda)
         console.log(">> CONDIÇÃO DE DCA DE TESTE ATINGIDA! EXECUTANDO...");
         const valorDCA = capitalUsado / 4;
         const dcaResult = await openPosition(valorDCA);
