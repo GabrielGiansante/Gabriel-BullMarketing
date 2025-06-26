@@ -1,5 +1,5 @@
 // =================================================================
-// BOT.JS - VERSÃO FINAL COM ORDEM LIMITE (MAIS CONFIÁVEL)
+// BOT.JS - VERSÃO FINAL COM CORREÇÃO DE ORDEM LIMITE
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -24,6 +24,7 @@ async function getCurrentPrice() {
     return parseFloat(response.result.list[0].lastPrice);
   } catch (error) { console.error("Erro ao buscar preço:", error.message); return null; }
 }
+
 async function getAvailableBalance() {
   try {
     const response = await client.getWalletBalance({ accountType: 'UNIFIED' });
@@ -40,6 +41,7 @@ async function getAvailableBalance() {
     return 0;
   } catch (error) { console.error("Erro crítico ao buscar saldo da carteira:", error.message); return 0; }
 }
+
 async function setLeverage() {
   try {
     console.log(`>> GARANTINDO ALAVANCAGEM DE ${LEVERAGE}x...`);
@@ -49,7 +51,7 @@ async function setLeverage() {
 }
 
 // ===========================================================
-// FUNÇÃO openPosition FINAL COM ORDEM LIMITE E LOG DETALHADO
+// FUNÇÃO openPosition COM A CORREÇÃO FINAL
 // ===========================================================
 async function openPosition(amountUSDT) {
   const price = await getCurrentPrice();
@@ -67,23 +69,19 @@ async function openPosition(amountUSDT) {
   }
   
   try {
-    // MUDANÇA: Usando ordem Limite que age como a Mercado
-    // Colocamos um preço limite um pouco ACIMA do preço atual para garantir execução imediata
-    const limitPrice = (price * 1.001).toFixed(1); // 0.1% acima do preço atual
-
+    const limitPrice = (price * 1.001).toFixed(1);
     console.log(`>> TENTANDO ABRIR POSIÇÃO LIMITE: Qty: ${finalQty} | Preço Limite: ${limitPrice}`);
 
     const res = await client.submitOrder({ 
       category: 'linear', 
       symbol: SYMBOL, 
       side: 'Buy', 
-      orderType: 'Limit', // <-- MUDANÇA AQUI
+      orderType: 'Limit',
       qty: finalQty,
-      price: limitPrice, // <-- NOVO PARÂMETRO
-      timeInForce: 'ImmediateOrCancel' // Garante que não fique uma ordem "pendurada"
+      price: limitPrice,
+      // A LINHA 'timeInForce' FOI REMOVIDA DAQUI
     });
 
-    // MUDANÇA: Logando a resposta completa para depuração
     console.log(">> RESPOSTA COMPLETA DA BYBIT (ABERTURA):", JSON.stringify(res, null, 2));
 
     if (res.retCode === 0 && res.result.orderId) {
@@ -106,7 +104,6 @@ async function closePosition() {
     const qtyToClose = positionSize.toFixed(5);
     console.log(`>> FECHANDO POSIÇÃO DE ${qtyToClose} BTC...`);
     await client.submitOrder({ category: 'linear', symbol: SYMBOL, side: 'Sell', orderType: 'Market', qty: qtyToClose, reduceOnly: true });
-    // O resto do cálculo de lucro está correto, mas vamos simplificar o log
     console.log(`>> ORDEM DE FECHAMENTO ENVIADA.`);
   } catch (error) {
     console.error("ERRO CRÍTICO NA CHAMADA DE FECHAMENTO:", error.message);
@@ -154,10 +151,7 @@ async function monitor() {
         await setLeverage();
         const reentradaResult = await openPosition(valorNovaEntrada);
         if (reentradaResult) {
-            console.log(">> REENTRADA EXECUTADA. ATUALIZANDO ESTADO...");
-            // Uma pequena pausa para a Bybit atualizar a posição
-            await new Promise(resolve => setTimeout(resolve, 3000)); 
-            // Na próxima execução do monitor, ele vai detectar a nova posição.
+            console.log(">> REENTRADA EXECUTADA. O bot irá detectar a nova posição no próximo ciclo.");
             entered = false; positionSize = 0; entryPrice = 0; capitalUsado = 0; gatilhoATH = 0; dcaUsado = false;
         } else {
             console.error("FALHA NA REENTRADA. VOLTANDO AO MODO DE DETECÇÃO MANUAL.");
@@ -171,12 +165,11 @@ async function monitor() {
           const dcaResult = await openPosition(valorDCA);
           if (dcaResult) {
               console.log("DCA executado. O bot irá reavaliar a posição no próximo ciclo.");
-              // O bot irá detectar o novo tamanho e preço médio automaticamente.
           }
       }
     }
   }
-  
+
 console.log("==> BOT GERENCIADOR BYBIT INICIADO <==");
 console.log("Aguardando você abrir uma posição manualmente na Bybit...");
 setInterval(() => { monitor().catch(err => console.error("ERRO NO CICLO MONITOR:", err)); }, 15000);
