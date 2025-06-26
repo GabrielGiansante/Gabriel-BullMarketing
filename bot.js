@@ -1,5 +1,5 @@
 // =================================================================
-// BOT.JS VERSÃO FINAL E CORRIGIDA
+// BOT.JS - VERSÃO FINAL COM SALDO DINÂMICO
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -13,8 +13,7 @@ const client = new RestClientV5({
 });
 
 const SYMBOL = 'BTCUSDT';
-const LEVERAGE = 2; // O bot assume que você usou essa alavancagem
-let capitalTotal = 5000; // Usado para calcular reentradas e DCA
+const LEVERAGE = 2;
 
 // Nossas variáveis de estado
 let entered = false;
@@ -22,7 +21,7 @@ let positionSize = 0;
 let entryPrice = 0;
 let capitalUsado = 0;
 let gatilhoATH = 0;
-let dcaUsado = false; // Variável de controle do DCA
+let dcaUsado = false;
 
 // FUNÇÕES DE AÇÃO
 async function getCurrentPrice() {
@@ -32,6 +31,24 @@ async function getCurrentPrice() {
   } catch (error) {
     console.error("Erro ao buscar preço na Bybit:", error);
     return null;
+  }
+}
+
+// NOVA FUNÇÃO PARA BUSCAR O SALDO DISPONÍVEL
+async function getAvailableBalance() {
+  try {
+    const response = await client.getWalletBalance({ accountType: 'CONTRACT' });
+    const usdtBalance = response.result.list[0].coin.find(c => c.coin === 'USDT');
+    if (usdtBalance) {
+      const balance = parseFloat(usdtBalance.availableToWithdraw);
+      console.log(`>> SALDO DISPONÍVEL DETECTADO: $${balance.toFixed(2)}`);
+      return balance;
+    }
+    console.error("Não foi possível encontrar o saldo de USDT na resposta da API.");
+    return 0;
+  } catch (error) {
+    console.error("Erro ao buscar saldo da carteira:", error);
+    return 0;
   }
 }
 
@@ -63,7 +80,6 @@ async function openPosition(amountUSDT) {
   }
 }
 
-// VERSÃO CORRIGIDA DE closePosition (SEM O RESET)
 async function closePosition() {
   const price = await getCurrentPrice();
   if (!price) return;
@@ -73,8 +89,7 @@ async function closePosition() {
     if (res.retCode === 0) {
         const valorFinal = positionSize * price;
         const lucro = valorFinal - capitalUsado;
-        capitalTotal += lucro;
-        console.log(`>> FECHOU POSIÇÃO | PREÇO: ${price} | LUCRO: $${lucro.toFixed(2)} | NOVO CAPITAL: $${capitalTotal.toFixed(2)}`);
+        console.log(`>> FECHOU POSIÇÃO | PREÇO: ${price} | LUCRO: $${lucro.toFixed(2)}`);
     } else {
         console.error("ERRO DE NEGÓCIO DA BYBIT (FECHAMENTO):", JSON.stringify(res));
     }
@@ -83,7 +98,7 @@ async function closePosition() {
   }
 }
 
-// FUNÇÃO MONITOR() CORRIGIDA PARA O TESTE RÁPIDO
+// LÓGICA PRINCIPAL DO MONITOR
 async function monitor() {
   console.log("-----------------------------------------");
   const price = await getCurrentPrice();
@@ -113,14 +128,23 @@ async function monitor() {
       console.log(`*** NOVO GATILHO ATH ATUALIZADO PARA ${gatilhoATH} ***`);
     }
 
-    // CONDIÇÃO DE FECHAMENTO PARA TESTE (0.1%)
+    // GATILHO DE TESTE (0.1% de queda)
     if (price <= gatilhoATH * 0.999) {
-      console.log(`>> CONDIÇÃO DE SAÍDA DE TESTE ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
+      console.log(`>> CONDIÇÃO DE SAÍDA ATINGIDA! FECHANDO E PREPARANDO PARA REENTRADA...`);
       await closePosition();
       console.log("AGUARDANDO 15 SEGUNDOS PARA ATUALIZAÇÃO DE SALDO...");
       await new Promise(resolve => setTimeout(resolve, 15000));
       
-      const valorNovaEntrada = capitalTotal * 0.8;
+      const saldoDisponivel = await getAvailableBalance();
+      const valorNovaEntrada = saldoDisponivel * 0.8;
+      
+      const ORDEM_MINIMA_USDT = 5;
+      if (valorNovaEntrada < ORDEM_MINIMA_USDT) {
+        console.error(`!! REENTRADA CANCELADA: Valor calculado ($${valorNovaEntrada.toFixed(2)}) é menor que o mínimo de $${ORDEM_MINIMA_USDT}.`);
+        entered = false; positionSize = 0; entryPrice = 0; capitalUsado = 0; gatilhoATH = 0; dcaUsado = false;
+        return;
+      }
+      
       await setLeverage();
       const reentradaResult = await openPosition(valorNovaEntrada);
 
@@ -138,7 +162,7 @@ async function monitor() {
       return;
     }
 
-    // CONDIÇÃO DE DCA PARA TESTE (0.2%)
+    // GATILHO DE TESTE PARA DCA (0.2% de queda)
     if (!dcaUsado && price <= gatilhoATH * 0.998) {
         console.log(">> CONDIÇÃO DE DCA DE TESTE ATINGIDA! EXECUTANDO...");
         const valorDCA = capitalUsado / 4;
@@ -155,6 +179,7 @@ async function monitor() {
     }
   }
 }
+
 console.log("==> BOT GERENCIADOR BYBIT INICIADO <==");
 console.log("Aguardando você abrir uma posição manualmente na Bybit...");
 setInterval(() => {
