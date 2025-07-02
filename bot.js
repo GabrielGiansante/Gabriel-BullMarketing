@@ -1,5 +1,5 @@
 // =================================================================
-// BOT DE REVERSÃO EMA (BTCUSDT) - Branch ema-reversal
+// BOT DE REVERSÃO EMA (BTCUSDT) - CÓDIGO FINAL
 // =================================================================
 
 const { RestClientV5 } = require('bybit-api');
@@ -8,7 +8,7 @@ const TA = require('technicalindicators');
 // --- Configurações ---
 const API_KEY = process.env.API_KEY;
 const API_SECRET = process.env.API_SECRET;
-const SYMBOL = 'BTCUSDT'; // <<-- OPERANDO EM BTCUSDT
+const SYMBOL = 'BTCUSDT';
 const CATEGORY = 'linear';
 const LEVERAGE_LONG = 20;
 const LEVERAGE_SHORT = 20;
@@ -23,7 +23,6 @@ const BALANCE_USAGE_PERCENT = 0.95;
 let isOperating = false;
 const client = new RestClientV5({ key: API_KEY, secret: API_SECRET });
 
-// --- Funções Auxiliares ---
 async function getApiData(func, params) {
   try {
     const response = await func(params);
@@ -43,7 +42,7 @@ async function getCurrentPrice() {
 async function getAvailableBalance() {
   const result = await getApiData(client.getWalletBalance.bind(client), { accountType: 'UNIFIED' });
   if (result && result.list.length > 0) {
-    const balanceCoin = result.list[0].coin.find(c => c.coin === 'USDT'); // <<-- PROCURANDO SALDO EM USDT
+    const balanceCoin = result.list[0].coin.find(c => c.coin === 'USDT');
     if (balanceCoin && balanceCoin.walletBalance) {
       const balance = parseFloat(balanceCoin.walletBalance);
       console.log(`>> Saldo Disponível (USDT) Detectado: $${balance.toFixed(2)}`);
@@ -56,14 +55,13 @@ async function getCurrentPositionSide() {
   const pos = await getApiData(client.getPositionInfo.bind(client), { category: CATEGORY, symbol: SYMBOL });
   return (pos && pos.list.length > 0 && parseFloat(pos.list[0].size) > 0) ? pos.list[0].side : 'None';
 }
-
-// --- Função de Operação ---
 async function executeTrade(side, leverage) {
   if (isOperating) return;
   isOperating = true;
   console.log(`\n>>> SINAL DETECTADO. INICIANDO OPERAÇÃO PARA ${side.toUpperCase()} <<<`);
   try {
-    await client.submitOrder({ category: CATEGORY, symbol: SYMBOL, side: side === 'Buy' ? 'Sell' : 'Buy', orderType: 'Market', qty: '0', closeOnTrigger: true, reduceOnly: true });
+    const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
+    await client.submitOrder({ category: CATEGORY, symbol: SYMBOL, side: closeSide, orderType: 'Market', qty: '0', closeOnTrigger: true, reduceOnly: true });
     console.log("   - Ordem de fechamento enviada. Aguardando 10s...");
     await new Promise(resolve => setTimeout(resolve, 10000));
     
@@ -84,8 +82,6 @@ async function executeTrade(side, leverage) {
   } catch (error) { console.error("   - ERRO CRÍTICO na operação:", error.message);
   } finally { isOperating = false; }
 }
-
-// --- Lógica de Estratégia ---
 async function checkStrategy() {
   if (isOperating) return;
   const price = await getCurrentPrice();
@@ -106,6 +102,5 @@ async function checkStrategy() {
   else if (currentSide !== 'Long' && price <= lowerBand) { await executeTrade('Buy', LEVERAGE_LONG); } 
   else { console.log("Preço entre as bandas. Nenhuma ação."); }
 }
-
 console.log("==> BOT DE REVERSÃO EMA (BTCUSDT) INICIADO <==");
 setInterval(checkStrategy, 60 * 1000);
